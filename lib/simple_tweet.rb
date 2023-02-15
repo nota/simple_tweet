@@ -188,6 +188,9 @@ module SimpleTweet
     :lang,
     :extended_entities,
     :possibly_sensitive,
+    :quoted_status_id,
+    :quoted_status_id_str,
+    :quoted_status,
     keyword_init: true
   )
   User = ::Struct.new(
