@@ -1,3 +1,8 @@
+require "cgi"
+require "oauth"
+require "json"
+require "net/http/post/multipart"
+
 module SimpleTweet
   module V1
     # Client provides only tweet

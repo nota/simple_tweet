@@ -2,10 +2,8 @@
 
 require_relative "simple_tweet/version"
 require_relative "simple_tweet/v1_client"
-require "cgi"
-require "oauth"
+require_relative "simple_tweet/v2_client"
 require "json"
-require "net/http/post/multipart"
 
 module SimpleTweet
   class Error < ::StandardError; end
