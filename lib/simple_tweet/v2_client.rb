@@ -14,7 +14,7 @@ module SimpleTweet
         json[:media] = { media_ids: media_ids } unless media_ids.empty?
         header = { "User-Agent": UA, "content-type": "application/json" }
         res = access_token.post(TW_TWEET_PATH, json.to_json, header)
-        ::JSON.parse(res.body)
+        ::JSON.parse(res.body, symbolize_names: true)
       end
     end
   end
