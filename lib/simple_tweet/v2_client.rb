@@ -8,9 +8,7 @@ module SimpleTweet
       UA = "SimpleTweet/#{SimpleTweet::VERSION}"
 
       def tweet(message:, media_ids: [])
-        json = {
-          text: message,
-        }
+        json = { text: message }
         json[:media] = { media_ids: media_ids } unless media_ids.empty?
         header = { "User-Agent": UA, "content-type": "application/json" }
         res = access_token.post(TW_TWEET_PATH, json.to_json, header)
