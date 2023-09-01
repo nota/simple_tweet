@@ -7,7 +7,7 @@ module SimpleTweet
     # mediaのuploadはapi 1.1しか用意されていないため、それを使う。
     class Client < V1::Client
       TW_TWEET_PATH = "/2/tweets"
-      UA = "SimpleTweet/#{SimpleTweet::VERSION}"
+      UA = "SimpleTweet/#{SimpleTweet::VERSION}".freeze
 
       def tweet(message:, media_ids: [])
         json = { text: message }
