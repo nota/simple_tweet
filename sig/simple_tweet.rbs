@@ -1,4 +1,87 @@
 module SimpleTweet
   VERSION: String
-  # See the writing guide of rbs: https://github.com/ruby/rbs#guides
+
+  module V1
+    class Client
+      TW_API_ORIGIN: String
+      TW_UPLOAD_ORIGIN: String
+      TW_MEDIA_UPLOAD_PATH: String
+      APPEND_PER: Integer
+      @consumer_key_: untyped
+      @consumer_secret_: untyped
+      @access_token_: untyped
+      @access_token_secret_: untyped
+      @max_append_retry_: Integer
+      @client: untyped
+
+      def initialize: (consumer_key: untyped, consumer_secret: untyped, access_token: untyped, access_token_secret: untyped, ?max_append_retry: Integer) -> void
+      def tweet: (message: untyped, ?media_ids: Array[untyped]) -> Tweet?
+      def tweet_with_media: (message: untyped, media_type: untyped, media: untyped) -> Tweet?
+
+      private
+      def access_token: (?site: String) -> untyped
+      def request: (untyped req) -> untyped
+      def upload_media: (media_type: untyped, media: untyped) -> [untyped]
+      def init: (video: untyped) -> untyped
+      def append: (video: untyped, media_id: untyped, index: untyped, ?retry_count: Integer) -> nil
+      def finalize: (media_id: untyped) -> untyped
+      def status: (media_id: untyped) -> untyped
+      def upload_video: (video: untyped) -> [untyped]
+    end
+  end
+
+  module V2
+    class Client < V1::Client
+      TW_TWEET_PATH: String
+      TW_METADATA_CREATE_PATH: String
+      UA: String
+
+      def tweet: (message: untyped, ?media_ids: Array[untyped]) -> untyped
+      def tweet_with_media: (message: untyped, media_type: untyped, media: untyped, ?alt_text: nil) -> untyped
+
+      private
+      def create_media_metadata: (media_id: untyped, alt_text: nil) -> untyped
+    end
+  end
+
+  class Error < StandardError
+  end
+
+  class UploadMediaError < Error
+  end
+
+  class Tweet < Struct[untyped]
+    attr_accessor created_at(): untyped
+    attr_accessor id(): bot
+    attr_accessor id_str(): untyped
+    attr_accessor text(): untyped
+    attr_accessor truncated(): untyped
+    attr_accessor entities(): untyped
+    attr_accessor source(): untyped
+    attr_accessor in_reply_to_status_id(): untyped
+    attr_accessor in_reply_to_status_id_str(): untyped
+    attr_accessor in_reply_to_user_id(): untyped
+    attr_accessor in_reply_to_user_id_str(): untyped
+    attr_accessor in_reply_to_screen_name(): untyped
+    attr_accessor user(): User
+    attr_accessor geo(): untyped
+    attr_accessor coordinates(): untyped
+    attr_accessor place(): untyped
+    attr_accessor contributors(): untyped
+    attr_accessor is_quote_status(): untyped
+    attr_accessor retweet_count(): untyped
+    attr_accessor favorite_count(): untyped
+    attr_accessor favorited(): untyped
+    attr_accessor retweeted(): untyped
+    attr_accessor lang(): untyped
+    attr_accessor extended_entities(): untyped
+    attr_accessor possibly_sensitive(): untyped
+    attr_accessor quoted_status_id(): untyped
+    attr_accessor quoted_status_id_str(): untyped
+    attr_accessor quoted_status(): untyped
+    def self.from_response: (untyped response) -> Tweet?
+    def uri: -> String
+    alias url uri
+    def to_h: -> Hash[untyped, untyped]
+  end
 end
