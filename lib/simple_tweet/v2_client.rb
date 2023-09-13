@@ -86,7 +86,7 @@ module SimpleTweet
           media_type: "video/mp4"
         )
         init_res = request(init_req)
-        raise UploadMediaError unless init_res.code == "202"
+        raise UploadMediaError.new("init failed", response: init_res) unless init_res.code == "202"
 
         ::JSON.parse(init_res.body)
       end
@@ -99,8 +99,9 @@ module SimpleTweet
           media: video.read(APPEND_PER),
           segment_index: index
         )
-        return if request(append_req).code == "204"
-        raise UploadMediaError unless retry_count <= @max_append_retry_
+        res = request(append_req)
+        return if res.code == "204"
+        raise UploadMediaError.new("append failed", response: res) unless retry_count <= @max_append_retry_
 
         append(video: video, media_id: media_id, index: index, retry_count: retry_count + 1)
       end
@@ -112,7 +113,7 @@ module SimpleTweet
           media_id: media_id
         )
         finalize_res = request(finalize_req)
-        raise UploadMediaError unless finalize_res.code == "201"
+        raise UploadMediaError.new("finalize failed", response: finalize_res) unless finalize_res.code == "201"
 
         ::JSON.parse(finalize_res.body)
       end
@@ -124,7 +125,7 @@ module SimpleTweet
           media_id: media_id
         )
         status_res = request(status_req)
-        raise UploadMediaError unless status_res.code == "200"
+        raise UploadMediaError.new("status failed", response: status_res) unless status_res.code == "200"
 
         ::JSON.parse(status_res.body)
       end
@@ -168,7 +169,7 @@ module SimpleTweet
         req = ::Net::HTTP::Post.new(TW_METADATA_CREATE_PATH, header)
         req.body = { media_id: media_id, alt_text: { text: alt_text } }.to_json
         res = request(req)
-        throw UploadMediaError, "create_media_metadata failed: #{res.code} #{res.body}" if res.code != "200"
+        raise UploadMediaError.new("create_media_metadata failed: #{res.code} #{res.body}", response: res) if res.code != "200"
         res
       end
     end
