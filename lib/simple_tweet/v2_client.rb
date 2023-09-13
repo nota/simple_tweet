@@ -27,7 +27,7 @@ module SimpleTweet
 
       # https://developer.twitter.com/en/docs/twitter-api/tweets/manage-tweets/migrate
       def tweet(message:, media_ids: [])
-        json = { text: message }
+        json = { text: message } # : ::Hash[::Symbol, (::String|::Hash[::Symbol, ::Array[::String]])]
         json[:media] = { media_ids: media_ids } unless media_ids.empty?
         header = { "User-Agent": UA, "content-type": "application/json" }
         access_token.post(TW_TWEET_PATH, json.to_json, header)
@@ -55,7 +55,10 @@ module SimpleTweet
         @client.sign! req
 
         url = ::URI.parse(TW_UPLOAD_ORIGIN + TW_MEDIA_UPLOAD_PATH)
-        https = ::Net::HTTP.new(url.host, url.port)
+        https = ::Net::HTTP.new(
+          url.host, # : ::String
+          url.port
+        )
         https.use_ssl = true
 
         https.start do |http|
@@ -165,7 +168,7 @@ module SimpleTweet
       end
 
       def create_media_metadata(media_id:, alt_text:)
-        header = { "content-type": "application/json; charset=UTF-8" }
+        header = { "content-type": "application/json; charset=UTF-8" } # : ::Hash[::String, ::String]
         req = ::Net::HTTP::Post.new(TW_METADATA_CREATE_PATH, header)
         req.body = { media_id: media_id, alt_text: { text: alt_text } }.to_json
         res = request(req)

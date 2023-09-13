@@ -11,7 +11,7 @@ module SimpleTweet
     attr_reader :response
 
     def initialize(message = nil, response: nil)
-      super(message)
+      super(message) unless message.nil?
       @response = response
     end
   end

@@ -1,0 +1,20 @@
+on: pull_request
+
+name: steep
+jobs:
+  rubocop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.2
+          bundler-cache: true
+      - run: bundle exec rbs collection install
+      - run: bundle exec steep check || true
+        name: log type warnings
+      - run: bundle exec steep check --severity-level=error
+        name: fail on type errors

@@ -1,4 +1,45 @@
 module SimpleTweet
   VERSION: String
-  # See the writing guide of rbs: https://github.com/ruby/rbs#guides
+
+  module V2
+    class Client
+      TW_API_ORIGIN: String
+      TW_UPLOAD_ORIGIN: String
+      TW_MEDIA_UPLOAD_PATH: String
+      TW_METADATA_CREATE_PATH: String
+      TW_TWEET_PATH: String
+      UA: String
+      APPEND_PER: Integer
+
+      def initialize: (consumer_key: String, consumer_secret: String, access_token: String, access_token_secret: String, ?max_append_retry: Integer) -> void
+      def tweet: (message: String, ?media_ids: Array[String]) -> untyped
+      def tweet_with_media: (message: String, media_type: String, media: untyped, ?alt_text: String?) -> untyped
+
+      @consumer_key_: String
+      @consumer_secret_: String
+      @access_token_: String
+      @access_token_secret_: String
+      @max_append_retry_: Integer
+      # @Client: ::OAuth::AccessToken
+
+      private
+      def access_token: (?site: String) -> untyped
+      def request: (untyped req) -> untyped
+      def upload_media: (media_type: untyped, media: untyped) -> [untyped]
+      def init: (video: untyped) -> untyped
+      def append: (video: untyped, media_id: untyped, index: untyped, ?retry_count: Integer) -> nil
+      def finalize: (media_id: untyped) -> untyped
+      def status: (media_id: untyped) -> untyped
+      def upload_video: (video: untyped) -> [untyped]
+      def create_media_metadata: (media_id: String, alt_text: String?) -> untyped
+    end
+  end
+
+  class Error < StandardError
+  end
+
+  class UploadMediaError < Error
+    attr_reader response: nil
+    def initialize: (?String? message, ?response: nil) -> void
+  end
 end
