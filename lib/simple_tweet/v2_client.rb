@@ -169,7 +169,8 @@ module SimpleTweet
         req = ::Net::HTTP::Post.new(TW_METADATA_CREATE_PATH, header)
         req.body = { media_id: media_id, alt_text: { text: alt_text } }.to_json
         res = request(req)
-        raise UploadMediaError.new("create_media_metadata failed: #{res.code} #{res.body}", response: res) if res.code != "200"
+        raise UploadMediaError.new("create_media_metadata failed", response: res) if res.code != "200"
+
         res
       end
     end
