@@ -20,7 +20,7 @@ module SimpleTweet
       @access_token_: String
       @access_token_secret_: String
       @max_append_retry_: Integer
-      # @Client: ::OAuth::AccessToken
+      @client: untyped # ::OAuth::AccessToken
 
       private
       def access_token: (?site: String) -> untyped

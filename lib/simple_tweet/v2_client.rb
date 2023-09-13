@@ -168,7 +168,7 @@ module SimpleTweet
       end
 
       def create_media_metadata(media_id:, alt_text:)
-        header = { "content-type": "application/json; charset=UTF-8" } # : ::Hash[::String, ::String]
+        header = { "content-type" => "application/json; charset=UTF-8" } # : ::Hash[::String, ::String]
         req = ::Net::HTTP::Post.new(TW_METADATA_CREATE_PATH, header)
         req.body = { media_id: media_id, alt_text: { text: alt_text } }.to_json
         res = request(req)
