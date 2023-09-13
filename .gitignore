@@ -7,6 +7,7 @@
 /spec/reports/
 /tmp/
 /vendor/
+/.gem_rbs_collection/
 
 # rspec failure tracking
 .rspec_status
