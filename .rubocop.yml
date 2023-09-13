@@ -20,3 +20,6 @@ Metrics/MethodLength:
 
 Metrics/AbcSize:
   Max: 30
+
+Style/FrozenStringLiteralComment:
+  Enabled: false
