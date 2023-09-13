@@ -5,5 +5,14 @@ require_relative "simple_tweet/v2_client"
 
 module SimpleTweet
   class Error < ::StandardError; end
-  class UploadMediaError < Error; end
+
+  # UploadMediaError is
+  class UploadMediaError < Error
+    attr_reader :response
+
+    def initialize(message = nil, response: nil)
+      super(message)
+      @response = response
+    end
+  end
 end
