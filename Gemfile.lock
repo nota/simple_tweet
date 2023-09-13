@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    simple_tweet (2.3.0)
+    simple_tweet (3.0.0)
       multipart-post (>= 2.2.3)
       oauth (~> 1.1.0)
 
@@ -62,7 +62,7 @@ GEM
       hashie
       version_gem (~> 1.1, >= 1.1.1)
     unicode-display_width (2.4.2)
-    version_gem (1.1.1)
+    version_gem (1.1.3)
 
 PLATFORMS
   arm64-darwin-21
