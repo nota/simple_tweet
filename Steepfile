@@ -5,5 +5,7 @@ target :lib do
   check "lib"
   library "net-http"
 
-  # configure_code_diagnostics(D::Ruby.strict)
+  configure_code_diagnostics(D::Ruby.strict) do |config|
+    config[D::Ruby::UnknownConstant] = :information
+  end
 end
