@@ -9,6 +9,9 @@ Style/StringLiteralsInInterpolation:
   Enabled: true
   EnforcedStyle: double_quotes
 
+Style/FrozenStringLiteralComment:
+  Enabled: false
+
 Layout/LineLength:
   Max: 120
 
@@ -21,5 +24,6 @@ Metrics/MethodLength:
 Metrics/AbcSize:
   Max: 30
 
-Style/FrozenStringLiteralComment:
-  Enabled: false
+Metrics/BlockLength:
+  Exclude:
+    - 'spec/**/*'
