@@ -25,9 +25,10 @@ module SimpleTweet
       private
       def access_token: (?site: String) -> untyped
       def request: (untyped req) -> untyped
+      def request_with_retry: (req: Net::HTTPRequest, expected_status_code: String, error_kind_message: String, ?retry_count: Integer) -> Net::HTTPResponse
       def upload_media: (media_type: untyped, media: untyped) -> [untyped]
       def init: (video: untyped) -> untyped
-      def append: (video: untyped, media_id: untyped, index: untyped, ?retry_count: Integer) -> nil
+      def append: (video: untyped, media_id: untyped, index: untyped) -> Net::HTTPResponse
       def finalize: (media_id: untyped) -> untyped
       def status: (media_id: untyped) -> untyped
       def upload_video: (video: untyped) -> [untyped]

@@ -66,6 +66,21 @@ module SimpleTweet
         end
       end
 
+      def request_with_retry(req:, expected_status_code:, error_kind_message:, retry_count: 3)
+        res = request(req)
+        return res if res.code == expected_status_code
+
+        raise UploadMediaError.new(error_kind_message, response: res) unless retry_count.positive?
+
+        sleep 1 << (3 - retry_count)
+        request_with_retry(
+          req: req,
+          expected_status_code: expected_status_code,
+          error_kind_message: error_kind_message,
+          retry_count: retry_count - 1
+        )
+      end
+
       # https://developer.twitter.com/en/docs/twitter-api/v1/media/upload-media/api-reference/post-media-upload
       ## maybe todo: multiple image
       # ここはv1のAPIを叩いている。
@@ -88,49 +103,40 @@ module SimpleTweet
           total_bytes: video.size,
           media_type: "video/mp4"
         )
-        init_res = request(init_req)
-        raise UploadMediaError.new("init failed", response: init_res) unless init_res.code == "202"
-
+        init_res = request_with_retry(req: init_req, expected_status_code: "202", error_kind_message: "init failed")
         ::JSON.parse(init_res.body)
       end
 
-      def append(video:, media_id:, index:, retry_count: 0)
-        append_req = ::Net::HTTP::Post::Multipart.new(
+      def append(video:, media_id:, index:)
+        req = ::Net::HTTP::Post::Multipart.new(
           TW_MEDIA_UPLOAD_PATH,
           command: "APPEND",
           media_id: media_id,
           media: video.read(APPEND_PER),
           segment_index: index
         )
-        res = request(append_req)
-        return if res.code == "204"
-        raise UploadMediaError.new("append failed", response: res) unless retry_count <= @max_append_retry_
-
-        append(video: video, media_id: media_id, index: index, retry_count: retry_count + 1)
+        request_with_retry(req: req, expected_status_code: "204", error_kind_message: "append failed")
       end
 
       def finalize(media_id:)
-        finalize_req = ::Net::HTTP::Post::Multipart.new(
+        req = ::Net::HTTP::Post::Multipart.new(
           TW_MEDIA_UPLOAD_PATH,
           command: "FINALIZE",
           media_id: media_id
         )
-        finalize_res = request(finalize_req)
-        raise UploadMediaError.new("finalize failed", response: finalize_res) unless finalize_res.code == "201"
-
-        ::JSON.parse(finalize_res.body)
+        # finalizeは201が帰ってきてても、processing_infoにretry_afterが入っている場合がある(upload_video中で処理)。
+        res = request_with_retry(req: req, expected_status_code: "201", error_kind_message: "finalize failed")
+        ::JSON.parse(res.body)
       end
 
       def status(media_id:)
-        status_req = ::Net::HTTP::Post::Multipart.new(
+        req = ::Net::HTTP::Post::Multipart.new(
           TW_MEDIA_UPLOAD_PATH,
           command: "STATUS",
           media_id: media_id
         )
-        status_res = request(status_req)
-        raise UploadMediaError.new("status failed", response: status_res) unless status_res.code == "200"
-
-        ::JSON.parse(status_res.body)
+        res = request(req: req, expected_status_code: "200", error_kind_message: "status failed")
+        ::JSON.parse(res.body)
       end
 
       # https://developer.twitter.com/en/docs/twitter-api/v1/media/upload-media/api-reference/post-media-upload-init
@@ -171,10 +177,7 @@ module SimpleTweet
         header = { "content-type" => "application/json; charset=UTF-8" } # : ::Hash[::String, ::String]
         req = ::Net::HTTP::Post.new(TW_METADATA_CREATE_PATH, header)
         req.body = { media_id: media_id, alt_text: { text: alt_text } }.to_json
-        res = request(req)
-        raise UploadMediaError.new("create_media_metadata failed", response: res) if res.code != "200"
-
-        res
+        request_with_retry(req: req, expected_status_code: "200", error_kind_message: "create_media_metadata failed")
       end
     end
   end
