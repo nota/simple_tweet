@@ -135,7 +135,7 @@ module SimpleTweet
           command: "STATUS",
           media_id: media_id
         )
-        res = request(req: req, expected_status_code: "200", error_kind_message: "status failed")
+        res = request_with_retry(req: req, expected_status_code: "200", error_kind_message: "status failed")
         ::JSON.parse(res.body)
       end
 
