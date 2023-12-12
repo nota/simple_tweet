@@ -12,8 +12,8 @@ module SimpleTweet
       APPEND_PER: Integer
 
       def initialize: (consumer_key: String, consumer_secret: String, access_token: String, access_token_secret: String, ?max_append_retry: Integer) -> void
-      def tweet: (message: String, ?media_ids: Array[String]) -> untyped
-      def tweet_with_media: (message: String, media_type: String, media: untyped, ?alt_text: String?) -> untyped
+      def tweet: (message: String, ?media_ids: Array[String]) -> Net::HTTPResponse
+      def tweet_with_media: (message: String, media_type: String, media: untyped, ?alt_text: String?) -> Net::HTTPResponse
 
       @consumer_key_: String
       @consumer_secret_: String
@@ -24,15 +24,15 @@ module SimpleTweet
 
       private
       def access_token: (?site: String) -> untyped
-      def request: (untyped req) -> untyped
+      def request: (Net::HTTPRequest req) -> Net::HTTPResponse
       def request_with_retry: (req: Net::HTTPRequest, expected_status_code: String, error_kind_message: String, ?retry_count: Integer) -> Net::HTTPResponse
-      def upload_media: (media_type: untyped, media: untyped) -> [untyped]
-      def init: (video: untyped) -> untyped
-      def append: (video: untyped, media_id: untyped, index: untyped) -> Net::HTTPResponse
-      def finalize: (media_id: untyped) -> untyped
-      def status: (media_id: untyped) -> untyped
-      def upload_video: (video: untyped) -> [untyped]
-      def create_media_metadata: (media_id: String, alt_text: String?) -> untyped
+      def upload_media: (media_type: String, media: untyped) -> [String]
+      def init: (video: untyped) -> Hash[String, untyped]
+      def append: (video: untyped, media_id: String, index: untyped) -> Net::HTTPResponse
+      def finalize: (media_id: String) -> Hash[String, untyped]
+      def status: (media_id: String) -> Hash[String, untyped]
+      def upload_video: (video: untyped) -> [String]
+      def create_media_metadata: (media_id: String, alt_text: String?) -> Net::HTTPResponse
     end
   end
 
@@ -40,7 +40,7 @@ module SimpleTweet
   end
 
   class UploadMediaError < Error
-    attr_reader response: nil
-    def initialize: (?String? message, ?response: nil) -> void
+    attr_reader response: Net::HTTPResponse?
+    def initialize: (?String? message, ?response: Net::HTTPResponse?) -> void
   end
 end
