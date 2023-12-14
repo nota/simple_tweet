@@ -130,11 +130,11 @@ module SimpleTweet
       end
 
       def status(media_id:)
-        req = ::Net::HTTP::Post::Multipart.new(
-          TW_MEDIA_UPLOAD_PATH,
-          command: "STATUS",
-          media_id: media_id
-        )
+        # https://developer.twitter.com/en/docs/twitter-api/v1/media/upload-media/api-reference/get-media-upload-status
+        # これはGET
+        uri = ::URI.parse(TW_UPLOAD_ORIGIN + TW_MEDIA_UPLOAD_PATH)
+        uri.query = ::URI.encode_www_form(command: "STATUS", media_id: media_id)
+        req = ::Net::HTTP::Get.new(uri)
         res = request_with_retry(req: req, expected_status_code: "200", error_kind_message: "status failed")
         ::JSON.parse(res.body)
       end
