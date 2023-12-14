@@ -68,10 +68,10 @@ module SimpleTweet
 
       def request_with_retry(req:, expected_status_code:, error_kind_message:, retry_count: 3)
         res = request(req)
-        return res if res.code == expected_status_code
-
+        return res if expected_status_code === res.code # rubocop:disable Style/CaseEquality
         raise UploadMediaError.new(error_kind_message, response: res) unless retry_count.positive?
 
+        @client = nil # reset client
         sleep 1 << (3 - retry_count)
         request_with_retry(
           req: req,
@@ -125,7 +125,7 @@ module SimpleTweet
           media_id: media_id
         )
         # finalizeは201が帰ってきてても、processing_infoにretry_afterが入っている場合がある(upload_video中で処理)。
-        res = request_with_retry(req: req, expected_status_code: "201", error_kind_message: "finalize failed")
+        res = request_with_retry(req: req, expected_status_code: /^20\d$/, error_kind_message: "finalize failed")
         ::JSON.parse(res.body)
       end
 
@@ -142,7 +142,7 @@ module SimpleTweet
       # https://developer.twitter.com/en/docs/twitter-api/v1/media/upload-media/api-reference/post-media-upload-init
       def upload_video(video:)
         init_res = init(video: video)
-        media_id = init_res["media_id_string"]
+        media_id = init_res["media_id_string"] # : String
 
         chunks_needed = (video.size - 1) / APPEND_PER + 1
         chunks_needed.times do |i|
