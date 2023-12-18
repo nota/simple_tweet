@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    simple_tweet (3.0.1)
+    simple_tweet (3.1.0)
       multipart-post (>= 2.2.3)
       oauth (~> 1.1.0)
 
