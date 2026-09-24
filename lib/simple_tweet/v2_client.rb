@@ -33,6 +33,9 @@ module SimpleTweet
       DEFAULT_MEDIA_CATEGORY = "tweet_image"
       # 処理中を表すstate。succeededでもこれらでもない場合は失敗扱いにする。
       PROCESSING_STATES = %w[pending in_progress].freeze
+      DEFAULT_CHECK_AFTER_SECS = 5
+      # check_after_secsに0が入っていてもXを叩き続けないようにする。
+      MIN_CHECK_AFTER_SECS = 1
 
       def initialize(consumer_key:, consumer_secret:, access_token:, access_token_secret:, max_append_retry: 3)
         @consumer_key_ = consumer_key
@@ -123,20 +126,6 @@ module SimpleTweet
         req
       end
 
-      # レスポンスのdataからmedia_idを取り出す。
-      # v1.1のmedia_id_stringと違い、v2はdata.idに入っている。
-      def media_id_from(data, res)
-        media_id = data["id"]
-        raise UploadMediaError.new("media_id not found in response", response: res) if media_id.nil?
-
-        media_id
-      end
-
-      def data_of(res)
-        parsed = ::JSON.parse(res.body) # : ::Hash[::String, untyped]
-        parsed["data"] || {}
-      end
-
       # https://docs.x.com/x-api/media/upload-media
       ## maybe todo: multiple image
       def upload_media(media_type:, media:)
@@ -149,8 +138,8 @@ module SimpleTweet
           media_category: media_category(media_type)
         )
         res = request_with_retry(req: req, error_kind_message: "upload media failed")
-        data = data_of(res)
-        media_id = media_id_from(data, res)
+        data = ResponseParser.data_of(res, "upload media failed")
+        media_id = ResponseParser.media_id_from(data, res)
         # gifなどはこのレスポンスにもprocessing_infoが入ることがある。
         wait_for_processing(media_id: media_id, processing_info: data["processing_info"])
         [media_id]
@@ -167,7 +156,7 @@ module SimpleTweet
           }
         )
         init_res = request_with_retry(req: init_req, error_kind_message: "init failed")
-        media_id_from(data_of(init_res), init_res)
+        ResponseParser.media_id_from(ResponseParser.data_of(init_res, "init failed"), init_res)
       end
 
       # https://docs.x.com/x-api/media/media-upload-append
@@ -177,7 +166,9 @@ module SimpleTweet
           media: ::UploadIO.new(::StringIO.new(video.read(APPEND_PER)), "application/octet-stream", "chunk"),
           segment_index: index
         )
-        request_with_retry(req: req, error_kind_message: "append failed")
+        res = request_with_retry(req: req, error_kind_message: "append failed")
+        ResponseParser.ensure_no_errors(res, "append failed")
+        res
       end
 
       # https://docs.x.com/x-api/media/media-upload-finalize
@@ -186,7 +177,7 @@ module SimpleTweet
         req.body = ""
         # finalizeが成功していても、processing_infoが返る場合がある(upload_video中で処理)。
         res = request_with_retry(req: req, error_kind_message: "finalize failed")
-        data_of(res)
+        ResponseParser.data_of(res, "finalize failed")
       end
 
       # https://docs.x.com/x-api/media/get-media-upload-status
@@ -196,7 +187,7 @@ module SimpleTweet
         uri.query = ::URI.encode_www_form(command: "STATUS", media_id: media_id)
         req = ::Net::HTTP::Get.new(uri)
         res = request_with_retry(req: req, error_kind_message: "status failed")
-        data_of(res)
+        ResponseParser.data_of(res, "status failed")
       end
 
       # https://docs.x.com/x-api/media/quickstart/media-upload-chunked
@@ -223,16 +214,26 @@ module SimpleTweet
           break if state == "succeeded"
           raise UploadMediaError, "media processing failed: #{state.inspect}" unless PROCESSING_STATES.include?(state)
 
-          sleep(info["check_after_secs"] || 5)
+          sleep(check_after_secs(info))
           info = status(media_id: media_id)["processing_info"]
           raise UploadMediaError, "processing_info not found in status response" if info.nil?
         end
       end
 
+      def check_after_secs(processing_info)
+        secs = processing_info["check_after_secs"]
+        return DEFAULT_CHECK_AFTER_SECS unless secs.is_a?(::Numeric)
+        return MIN_CHECK_AFTER_SECS if secs < MIN_CHECK_AFTER_SECS
+
+        secs
+      end
+
       # https://docs.x.com/x-api/media/create-media-metadata
       def create_media_metadata(media_id:, alt_text:)
         req = json_request(TW_MEDIA_METADATA_PATH, { id: media_id, metadata: { alt_text: { text: alt_text } } })
-        request_with_retry(req: req, error_kind_message: "create_media_metadata failed")
+        res = request_with_retry(req: req, error_kind_message: "create_media_metadata failed")
+        ResponseParser.ensure_no_errors(res, "create_media_metadata failed")
+        res
       end
     end
   end

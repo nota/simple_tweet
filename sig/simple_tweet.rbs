@@ -2,6 +2,14 @@ module SimpleTweet
   VERSION: String
 
   module V2
+    module ResponseParser
+      def self?.data_of: (Net::HTTPResponse res, String error_kind_message) -> Hash[String, untyped]
+      def self?.ensure_no_errors: (Net::HTTPResponse res, String error_kind_message) -> void
+      def self?.media_id_from: (Hash[String, untyped] data, Net::HTTPResponse res) -> String
+      def self?.parsed_body: (Net::HTTPResponse res, String error_kind_message, ?allow_empty: bool) -> Hash[String, untyped]
+      def self?.error_message: (Net::HTTPResponse res, String error_kind_message) -> String
+    end
+
     class Client
       TW_API_ORIGIN: String
       TW_MEDIA_UPLOAD_PATH: String
@@ -17,6 +25,8 @@ module SimpleTweet
       MEDIA_CATEGORIES: Hash[String, String]
       DEFAULT_MEDIA_CATEGORY: String
       PROCESSING_STATES: Array[String]
+      DEFAULT_CHECK_AFTER_SECS: Integer
+      MIN_CHECK_AFTER_SECS: Integer
 
       def initialize: (consumer_key: String, consumer_secret: String, access_token: String, access_token_secret: String, ?max_append_retry: Integer) -> void
       def tweet: (message: String, ?media_ids: Array[String]) -> Net::HTTPResponse
@@ -36,8 +46,7 @@ module SimpleTweet
       def normalize_media_type: (String media_type) -> String
       def media_category: (String media_type) -> String
       def json_request: (String path, Hash[Symbol, untyped] body) -> Net::HTTP::Post
-      def media_id_from: (Hash[String, untyped] data, Net::HTTPResponse res) -> String
-      def data_of: (Net::HTTPResponse res) -> Hash[String, untyped]
+      def check_after_secs: (Hash[String, untyped] processing_info) -> Numeric
       def upload_media: (media_type: String, media: untyped) -> [String]
       def init: (video: untyped, ?media_type: String) -> String
       def append: (video: untyped, media_id: String, index: untyped) -> Net::HTTPResponse

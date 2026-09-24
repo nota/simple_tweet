@@ -260,6 +260,100 @@ RSpec.describe SimpleTweet do
       end
     end
 
+    context "when the upload returns 2xx with errors and no data" do
+      before do
+        allow(twitter_client).to receive(:sleep)
+        stub_request(:post, media_upload_url).to_return(
+          body: { errors: [{ title: "Unsupported Media Type", detail: "media is not supported" }] }.to_json,
+          status: 200
+        )
+      end
+
+      it "raises UploadMediaError instead of tweeting" do
+        expect do
+          twitter_client.tweet_with_media(
+            message: message,
+            media_type: "image/png",
+            media: StringIO.new("dummy image")
+          )
+        end.to raise_error(SimpleTweet::UploadMediaError, /upload media failed: media is not supported/)
+        expect(stub_tweet_request).not_to have_been_requested
+      end
+    end
+
+    context "when the upload returns 2xx with a body that is not JSON" do
+      before do
+        stub_request(:post, media_upload_url).to_return(body: "<html>error</html>", status: 200)
+      end
+
+      it "raises UploadMediaError" do
+        expect do
+          twitter_client.tweet_with_media(
+            message: message,
+            media_type: "image/png",
+            media: StringIO.new("dummy image")
+          )
+        end.to raise_error(SimpleTweet::UploadMediaError, "upload media failed")
+      end
+    end
+
+    context "when finalize returns 2xx with errors and no data" do
+      before do
+        allow(twitter_client).to receive(:sleep)
+        stub_request(:post, media_initialize_url).to_return(
+          body: { data: { id: media_id } }.to_json, status: 200
+        )
+        stub_request(:post, "#{media_upload_url}/#{media_id}/append").to_return(
+          body: { data: { expires_at: 1 } }.to_json, status: 200
+        )
+        stub_request(:post, "#{media_upload_url}/#{media_id}/finalize").to_return(
+          body: { errors: [{ title: "InternalError", detail: "finalize did not complete" }] }.to_json,
+          status: 200
+        )
+      end
+
+      it "raises UploadMediaError instead of tweeting with an unfinished media_id" do
+        expect do
+          twitter_client.tweet_with_media(
+            message: message,
+            media_type: "video/mp4",
+            media: StringIO.new("dummy video")
+          )
+        end.to raise_error(SimpleTweet::UploadMediaError, /finalize failed: finalize did not complete/)
+        expect(stub_tweet_request).not_to have_been_requested
+      end
+    end
+
+    # 署名済みのreqをそのまま再署名すると、前回のAuthorizationのoauth_*が
+    # 署名対象パラメータに混ざり、再送の署名が壊れる（oauth gemのRequestProxyが
+    # auth_header_paramsを署名ベース文字列に含めるため）。
+    # WebMockは署名を検証しないので、署名前のreqの状態を直接確かめる。
+    context "when the same request object is signed again" do
+      let(:seen_authorizations) { [] }
+
+      before do
+        stub_request(:post, media_upload_url).to_return(
+          body: { data: { id: media_id } }.to_json, status: 200
+        )
+        seen = seen_authorizations
+        fake_access_token = instance_double(OAuth::AccessToken)
+        allow(fake_access_token).to receive(:sign!) do |req|
+          seen << req["Authorization"]
+          req["Authorization"] = "OAuth oauth_nonce=\"signed\""
+        end
+        twitter_client.instance_variable_set(:@client, fake_access_token)
+      end
+
+      it "drops the previous Authorization header before signing" do
+        req = Net::HTTP::Post.new(SimpleTweet::V2::Client::TW_MEDIA_UPLOAD_PATH)
+        req.body = ""
+        twitter_client.send(:request, req)
+        twitter_client.send(:request, req)
+
+        expect(seen_authorizations).to eq([nil, nil])
+      end
+    end
+
     # WebMockはbody_streamを読んでbodyに詰め替えてしまい、再送時にstreamが
     # 読み切られたままになる問題を隠してしまうので、ここだけrequestを差し替えて確かめる。
     context "when a multipart request is retried" do
