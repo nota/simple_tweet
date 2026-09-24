@@ -4,12 +4,19 @@ module SimpleTweet
   module V2
     class Client
       TW_API_ORIGIN: String
-      TW_UPLOAD_ORIGIN: String
       TW_MEDIA_UPLOAD_PATH: String
-      TW_METADATA_CREATE_PATH: String
+      TW_MEDIA_INITIALIZE_PATH: String
+      TW_MEDIA_METADATA_PATH: String
       TW_TWEET_PATH: String
       UA: String
       APPEND_PER: Integer
+      SUCCESS_STATUS_CODE: Regexp
+      RETRYABLE_STATUS_CODE: Regexp
+      VIDEO_MEDIA_TYPE: String
+      MEDIA_TYPE_ALIASES: Hash[String, String]
+      MEDIA_CATEGORIES: Hash[String, String]
+      DEFAULT_MEDIA_CATEGORY: String
+      PROCESSING_STATES: Array[String]
 
       def initialize: (consumer_key: String, consumer_secret: String, access_token: String, access_token_secret: String, ?max_append_retry: Integer) -> void
       def tweet: (message: String, ?media_ids: Array[String]) -> Net::HTTPResponse
@@ -23,15 +30,21 @@ module SimpleTweet
       @client: untyped # ::OAuth::AccessToken
 
       private
-      def access_token: (?site: String) -> untyped
+      def access_token: () -> untyped
       def request: (Net::HTTPRequest req) -> Net::HTTPResponse
-      def request_with_retry: (req: Net::HTTPRequest, expected_status_code: String | Regexp, error_kind_message: String, ?retry_count: Integer) -> Net::HTTPResponse
+      def request_with_retry: (req: Net::HTTPRequest, error_kind_message: String, ?expected_status_code: String | Regexp, ?retry_count: Integer) -> Net::HTTPResponse
+      def normalize_media_type: (String media_type) -> String
+      def media_category: (String media_type) -> String
+      def json_request: (String path, Hash[Symbol, untyped] body) -> Net::HTTP::Post
+      def media_id_from: (Hash[String, untyped] data, Net::HTTPResponse res) -> String
+      def data_of: (Net::HTTPResponse res) -> Hash[String, untyped]
       def upload_media: (media_type: String, media: untyped) -> [String]
-      def init: (video: untyped) -> Hash[String, untyped]
+      def init: (video: untyped, ?media_type: String) -> String
       def append: (video: untyped, media_id: String, index: untyped) -> Net::HTTPResponse
       def finalize: (media_id: String) -> Hash[String, untyped]
       def status: (media_id: String) -> Hash[String, untyped]
-      def upload_video: (video: untyped) -> [String]
+      def upload_video: (video: untyped, ?media_type: String) -> [String]
+      def wait_for_processing: (media_id: String, processing_info: Hash[String, untyped]?) -> void
       def create_media_metadata: (media_id: String, alt_text: String?) -> Net::HTTPResponse
     end
   end

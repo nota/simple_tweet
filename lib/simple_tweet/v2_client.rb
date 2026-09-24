@@ -2,6 +2,7 @@
 
 require "json"
 require "cgi"
+require "stringio"
 require "oauth"
 require "net/http/post/multipart"
 
@@ -10,12 +11,28 @@ module SimpleTweet
     # Twitte API v2を叩くクライアント
     class Client
       TW_API_ORIGIN = "https://api.twitter.com"
-      TW_UPLOAD_ORIGIN = "https://upload.twitter.com"
-      TW_MEDIA_UPLOAD_PATH = "/1.1/media/upload.json"
-      TW_METADATA_CREATE_PATH = "/1.1/media/metadata/create.json"
+      TW_MEDIA_UPLOAD_PATH = "/2/media/upload"
+      TW_MEDIA_INITIALIZE_PATH = "/2/media/upload/initialize"
+      TW_MEDIA_METADATA_PATH = "/2/media/metadata"
       TW_TWEET_PATH = "/2/tweets"
       UA = "SimpleTweet/#{SimpleTweet::VERSION}".freeze
       APPEND_PER = 5 * (1 << 20)
+      SUCCESS_STATUS_CODE = /^2\d\d$/
+      # 4xxはリトライしても結果が変わらないので、一時的な失敗だけ再送する。
+      RETRYABLE_STATUS_CODE = /^(5\d\d|429)$/
+      VIDEO_MEDIA_TYPE = "video/mp4"
+      # v2のmedia_typeはenumで検証されるので、よくある別名を正規化しておく。
+      MEDIA_TYPE_ALIASES = {
+        "image/jpg" => "image/jpeg"
+      }.freeze
+      # media_categoryはv2では必須。
+      MEDIA_CATEGORIES = {
+        "video/mp4" => "tweet_video",
+        "image/gif" => "tweet_gif"
+      }.freeze
+      DEFAULT_MEDIA_CATEGORY = "tweet_image"
+      # 処理中を表すstate。succeededでもこれらでもない場合は失敗扱いにする。
+      PROCESSING_STATES = %w[pending in_progress].freeze
 
       def initialize(consumer_key:, consumer_secret:, access_token:, access_token_secret:, max_append_retry: 3)
         @consumer_key_ = consumer_key
@@ -45,16 +62,19 @@ module SimpleTweet
 
       private
 
-      def access_token(site: TW_API_ORIGIN)
-        consumer = ::OAuth::Consumer.new(@consumer_key_, @consumer_secret_, site: site)
+      def access_token
+        consumer = ::OAuth::Consumer.new(@consumer_key_, @consumer_secret_, site: TW_API_ORIGIN)
         ::OAuth::AccessToken.new(consumer, @access_token_, @access_token_secret_)
       end
 
       def request(req)
-        @client ||= access_token(site: TW_UPLOAD_ORIGIN)
+        @client ||= access_token
+        # 署名済みのreqを再送する場合、前回のAuthorizationヘッダのoauth_*が
+        # 署名対象パラメータに混ざってしまうので、署名し直す前に消す。
+        req.delete("Authorization")
         @client.sign! req
 
-        url = ::URI.parse(TW_UPLOAD_ORIGIN + TW_MEDIA_UPLOAD_PATH)
+        url = ::URI.parse(TW_API_ORIGIN)
         https = ::Net::HTTP.new(
           url.host, # : ::String
           url.port
@@ -66,13 +86,17 @@ module SimpleTweet
         end
       end
 
-      def request_with_retry(req:, expected_status_code:, error_kind_message:, retry_count: 3)
+      def request_with_retry(req:, error_kind_message:, expected_status_code: SUCCESS_STATUS_CODE, retry_count: 3)
         res = request(req)
         return res if expected_status_code === res.code # rubocop:disable Style/CaseEquality
-        raise UploadMediaError.new(error_kind_message, response: res) unless retry_count.positive?
+        unless retry_count.positive? && RETRYABLE_STATUS_CODE === res.code
+          raise UploadMediaError.new(error_kind_message, response: res)
+        end
 
         @client = nil # reset client
         sleep 1 << (3 - retry_count)
+        # multipartのbodyはstreamなので、読み切った状態のまま再送すると空のbodyになる。
+        req.body_stream.rewind if req.body_stream.respond_to?(:rewind)
         request_with_retry(
           req: req,
           expected_status_code: expected_status_code,
@@ -81,68 +105,103 @@ module SimpleTweet
         )
       end
 
-      # https://developer.twitter.com/en/docs/twitter-api/v1/media/upload-media/api-reference/post-media-upload
+      def normalize_media_type(media_type)
+        MEDIA_TYPE_ALIASES.fetch(media_type, media_type)
+      end
+
+      def media_category(media_type)
+        MEDIA_CATEGORIES.fetch(media_type, DEFAULT_MEDIA_CATEGORY)
+      end
+
+      def json_request(path, body)
+        header = {
+          "User-Agent" => UA,
+          "content-type" => "application/json; charset=UTF-8"
+        } # : ::Hash[::String, ::String]
+        req = ::Net::HTTP::Post.new(path, header)
+        req.body = body.to_json
+        req
+      end
+
+      # レスポンスのdataからmedia_idを取り出す。
+      # v1.1のmedia_id_stringと違い、v2はdata.idに入っている。
+      def media_id_from(data, res)
+        media_id = data["id"]
+        raise UploadMediaError.new("media_id not found in response", response: res) if media_id.nil?
+
+        media_id
+      end
+
+      def data_of(res)
+        parsed = ::JSON.parse(res.body) # : ::Hash[::String, untyped]
+        parsed["data"] || {}
+      end
+
+      # https://docs.x.com/x-api/media/upload-media
       ## maybe todo: multiple image
-      # ここはv1のAPIを叩いている。
       def upload_media(media_type:, media:)
-        return upload_video(video: media) if media_type == "video/mp4"
+        media_type = normalize_media_type(media_type)
+        return upload_video(video: media, media_type: media_type) if media_type == VIDEO_MEDIA_TYPE
 
         req = ::Net::HTTP::Post::Multipart.new(
           TW_MEDIA_UPLOAD_PATH,
           media: ::UploadIO.new(media, media_type),
-          media_category: "tweet_image"
+          media_category: media_category(media_type)
         )
-        res = ::JSON.parse(request(req).body)
-        [res["media_id_string"]]
+        res = request_with_retry(req: req, error_kind_message: "upload media failed")
+        data = data_of(res)
+        media_id = media_id_from(data, res)
+        # gifなどはこのレスポンスにもprocessing_infoが入ることがある。
+        wait_for_processing(media_id: media_id, processing_info: data["processing_info"])
+        [media_id]
       end
 
-      def init(video:)
-        init_req = ::Net::HTTP::Post::Multipart.new(
-          TW_MEDIA_UPLOAD_PATH,
-          command: "INIT",
-          total_bytes: video.size,
-          media_type: "video/mp4"
+      # https://docs.x.com/x-api/media/media-upload-initialize
+      def init(video:, media_type: VIDEO_MEDIA_TYPE)
+        init_req = json_request(
+          TW_MEDIA_INITIALIZE_PATH,
+          {
+            media_type: media_type,
+            total_bytes: video.size,
+            media_category: media_category(media_type)
+          }
         )
-        init_res = request_with_retry(req: init_req, expected_status_code: "202", error_kind_message: "init failed")
-        ::JSON.parse(init_res.body)
+        init_res = request_with_retry(req: init_req, error_kind_message: "init failed")
+        media_id_from(data_of(init_res), init_res)
       end
 
+      # https://docs.x.com/x-api/media/media-upload-append
       def append(video:, media_id:, index:)
         req = ::Net::HTTP::Post::Multipart.new(
-          TW_MEDIA_UPLOAD_PATH,
-          command: "APPEND",
-          media_id: media_id,
-          media: video.read(APPEND_PER),
+          "#{TW_MEDIA_UPLOAD_PATH}/#{media_id}/append",
+          media: ::UploadIO.new(::StringIO.new(video.read(APPEND_PER)), "application/octet-stream", "chunk"),
           segment_index: index
         )
-        request_with_retry(req: req, expected_status_code: "204", error_kind_message: "append failed")
+        request_with_retry(req: req, error_kind_message: "append failed")
       end
 
+      # https://docs.x.com/x-api/media/media-upload-finalize
       def finalize(media_id:)
-        req = ::Net::HTTP::Post::Multipart.new(
-          TW_MEDIA_UPLOAD_PATH,
-          command: "FINALIZE",
-          media_id: media_id
-        )
-        # finalizeは201が帰ってきてても、processing_infoにretry_afterが入っている場合がある(upload_video中で処理)。
-        res = request_with_retry(req: req, expected_status_code: /^20\d$/, error_kind_message: "finalize failed")
-        ::JSON.parse(res.body)
+        req = ::Net::HTTP::Post.new("#{TW_MEDIA_UPLOAD_PATH}/#{media_id}/finalize", { "User-Agent" => UA })
+        req.body = ""
+        # finalizeが成功していても、processing_infoが返る場合がある(upload_video中で処理)。
+        res = request_with_retry(req: req, error_kind_message: "finalize failed")
+        data_of(res)
       end
 
+      # https://docs.x.com/x-api/media/get-media-upload-status
+      # これはGET
       def status(media_id:)
-        # https://developer.twitter.com/en/docs/twitter-api/v1/media/upload-media/api-reference/get-media-upload-status
-        # これはGET
-        uri = ::URI.parse(TW_UPLOAD_ORIGIN + TW_MEDIA_UPLOAD_PATH)
+        uri = ::URI.parse(TW_API_ORIGIN + TW_MEDIA_UPLOAD_PATH)
         uri.query = ::URI.encode_www_form(command: "STATUS", media_id: media_id)
         req = ::Net::HTTP::Get.new(uri)
-        res = request_with_retry(req: req, expected_status_code: "200", error_kind_message: "status failed")
-        ::JSON.parse(res.body)
+        res = request_with_retry(req: req, error_kind_message: "status failed")
+        data_of(res)
       end
 
-      # https://developer.twitter.com/en/docs/twitter-api/v1/media/upload-media/api-reference/post-media-upload-init
-      def upload_video(video:)
-        init_res = init(video: video)
-        media_id = init_res["media_id_string"] # : String
+      # https://docs.x.com/x-api/media/quickstart/media-upload-chunked
+      def upload_video(video:, media_type: VIDEO_MEDIA_TYPE)
+        media_id = init(video: video, media_type: media_type)
 
         chunks_needed = (video.size - 1) / APPEND_PER + 1
         chunks_needed.times do |i|
@@ -150,34 +209,30 @@ module SimpleTweet
         end
 
         finalize_res = finalize(media_id: media_id)
-
-        if finalize_res["processing_info"]
-          retry_after = finalize_res["processing_info"]["check_after_secs"] || 5
-          loop do
-            sleep retry_after
-
-            status_res = status(media_id: media_id)
-            raise UploadMediaError if status_res["processing_info"].nil?
-            break if status_res["processing_info"]["state"] == "succeeded"
-
-            if status_res["processing_info"]["state"] == "in_progress"
-              retry_after = status_res["processing_info"]["check_after_secs"] || 5
-              next
-            end
-
-            # status_res_json["processing_info"]["state"] == "failed"
-            raise UploadMediaError
-          end
-        end
+        wait_for_processing(media_id: media_id, processing_info: finalize_res["processing_info"])
 
         [media_id]
       end
 
+      def wait_for_processing(media_id:, processing_info:)
+        return if processing_info.nil?
+
+        info = processing_info
+        loop do
+          state = info["state"]
+          break if state == "succeeded"
+          raise UploadMediaError, "media processing failed: #{state.inspect}" unless PROCESSING_STATES.include?(state)
+
+          sleep(info["check_after_secs"] || 5)
+          info = status(media_id: media_id)["processing_info"]
+          raise UploadMediaError, "processing_info not found in status response" if info.nil?
+        end
+      end
+
+      # https://docs.x.com/x-api/media/create-media-metadata
       def create_media_metadata(media_id:, alt_text:)
-        header = { "content-type" => "application/json; charset=UTF-8" } # : ::Hash[::String, ::String]
-        req = ::Net::HTTP::Post.new(TW_METADATA_CREATE_PATH, header)
-        req.body = { media_id: media_id, alt_text: { text: alt_text } }.to_json
-        request_with_retry(req: req, expected_status_code: "200", error_kind_message: "create_media_metadata failed")
+        req = json_request(TW_MEDIA_METADATA_PATH, { id: media_id, metadata: { alt_text: { text: alt_text } } })
+        request_with_retry(req: req, error_kind_message: "create_media_metadata failed")
       end
     end
   end
