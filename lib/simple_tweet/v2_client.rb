@@ -86,7 +86,7 @@ module SimpleTweet
         res = request(req)
         return res if expected_status_code === res.code # rubocop:disable Style/CaseEquality
         unless retry_count.positive? && RETRYABLE_STATUS_CODE === res.code
-          raise UploadMediaError.new(error_kind_message, response: res)
+          raise UploadMediaError.new(ResponseParser.error_message(res, error_kind_message), response: res)
         end
 
         @client = nil # reset client

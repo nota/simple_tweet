@@ -14,11 +14,18 @@ module SimpleTweet
     end
 
     module ResponseParser
+      DETAIL_MAX_LENGTH: Integer
+
       def self?.data_of: (Net::HTTPResponse res, String error_kind_message) -> Hash[String, untyped]
       def self?.ensure_no_errors: (Net::HTTPResponse res, String error_kind_message) -> void
       def self?.media_id_from: (Hash[String, untyped] data, Net::HTTPResponse res) -> String
-      def self?.parsed_body: (Net::HTTPResponse res, String error_kind_message, ?allow_empty: bool) -> Hash[String, untyped]
+      def self?.parsed_body: (Net::HTTPResponse res, String error_kind_message) -> Hash[String, untyped]
       def self?.error_message: (Net::HTTPResponse res, String error_kind_message) -> String
+      def self?.error_detail: (Net::HTTPResponse res) -> String?
+      def self?.structured_detail: (Net::HTTPResponse res) -> String?
+      def self?.first_error_detail: (untyped errors) -> String?
+      def self?.raw_body_detail: (Net::HTTPResponse res) -> String?
+      def self?.safe_parse: (Net::HTTPResponse res) -> untyped
     end
 
     class Client

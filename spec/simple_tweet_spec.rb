@@ -173,7 +173,7 @@ RSpec.describe SimpleTweet do
             media_type: "image/png",
             media: StringIO.new("dummy image")
           )
-        end.to raise_error(SimpleTweet::UploadMediaError, "upload media failed")
+        end.to raise_error(SimpleTweet::UploadMediaError, /upload media failed: 401 Unauthorized/)
         expect(stub_tweet_request).not_to have_been_requested
       end
 
@@ -304,7 +304,7 @@ RSpec.describe SimpleTweet do
             media_type: "image/png",
             media: StringIO.new("dummy image")
           )
-        end.to raise_error(SimpleTweet::UploadMediaError, /upload media failed: media is not supported/)
+        end.to raise_error(SimpleTweet::UploadMediaError, /upload media failed: 200 media is not supported/)
         expect(stub_tweet_request).not_to have_been_requested
       end
     end
@@ -321,7 +321,7 @@ RSpec.describe SimpleTweet do
             media_type: "image/png",
             media: StringIO.new("dummy image")
           )
-        end.to raise_error(SimpleTweet::UploadMediaError, "upload media failed")
+        end.to raise_error(SimpleTweet::UploadMediaError, %r{upload media failed: 200 <html>error</html>})
       end
     end
 
@@ -347,7 +347,7 @@ RSpec.describe SimpleTweet do
             media_type: "video/mp4",
             media: StringIO.new("dummy video")
           )
-        end.to raise_error(SimpleTweet::UploadMediaError, /finalize failed: finalize did not complete/)
+        end.to raise_error(SimpleTweet::UploadMediaError, /finalize failed: 200 finalize did not complete/)
         expect(stub_tweet_request).not_to have_been_requested
       end
     end
