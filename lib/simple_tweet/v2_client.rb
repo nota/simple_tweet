@@ -20,29 +20,21 @@ module SimpleTweet
       SUCCESS_STATUS_CODE = /^2\d\d$/
       # 4xxはリトライしても結果が変わらないので、一時的な失敗だけ再送する。
       RETRYABLE_STATUS_CODE = /^(5\d\d|429)$/
-      VIDEO_MEDIA_TYPE = "video/mp4"
-      # v2のmedia_typeはenumで検証されるので、よくある別名を正規化しておく。
-      MEDIA_TYPE_ALIASES = {
-        "image/jpg" => "image/jpeg"
-      }.freeze
-      # media_categoryはv2では必須。
-      MEDIA_CATEGORIES = {
-        "video/mp4" => "tweet_video",
-        "image/gif" => "tweet_gif"
-      }.freeze
-      DEFAULT_MEDIA_CATEGORY = "tweet_image"
+      DEFAULT_MAX_RETRY = 3
+      # 再送の待ち時間は指数で伸ばすが、max_retryを大きくした時に伸びすぎないよう頭を打たせる。
+      BACKOFF_MAX_SECS = 30
       # 処理中を表すstate。succeededでもこれらでもない場合は失敗扱いにする。
       PROCESSING_STATES = %w[pending in_progress].freeze
       DEFAULT_CHECK_AFTER_SECS = 5
       # check_after_secsに0が入っていてもXを叩き続けないようにする。
       MIN_CHECK_AFTER_SECS = 1
 
-      def initialize(consumer_key:, consumer_secret:, access_token:, access_token_secret:, max_append_retry: 3)
+      def initialize(consumer_key:, consumer_secret:, access_token:, access_token_secret:, max_retry: DEFAULT_MAX_RETRY)
         @consumer_key_ = consumer_key
         @consumer_secret_ = consumer_secret
         @access_token_ = access_token
         @access_token_secret_ = access_token_secret
-        @max_append_retry_ = max_append_retry
+        @max_retry_ = max_retry
       end
 
       # https://developer.twitter.com/en/docs/twitter-api/tweets/manage-tweets/migrate
@@ -89,7 +81,8 @@ module SimpleTweet
         end
       end
 
-      def request_with_retry(req:, error_kind_message:, expected_status_code: SUCCESS_STATUS_CODE, retry_count: 3)
+      def request_with_retry(req:, error_kind_message:, expected_status_code: SUCCESS_STATUS_CODE,
+                             retry_count: @max_retry_)
         res = request(req)
         return res if expected_status_code === res.code # rubocop:disable Style/CaseEquality
         unless retry_count.positive? && RETRYABLE_STATUS_CODE === res.code
@@ -97,7 +90,7 @@ module SimpleTweet
         end
 
         @client = nil # reset client
-        sleep 1 << (3 - retry_count)
+        sleep backoff_secs(retry_count)
         # multipartのbodyはstreamなので、読み切った状態のまま再送すると空のbodyになる。
         req.body_stream.rewind if req.body_stream.respond_to?(:rewind)
         request_with_retry(
@@ -108,12 +101,11 @@ module SimpleTweet
         )
       end
 
-      def normalize_media_type(media_type)
-        MEDIA_TYPE_ALIASES.fetch(media_type, media_type)
-      end
+      def backoff_secs(retry_count)
+        secs = 1 << (@max_retry_ - retry_count)
+        return BACKOFF_MAX_SECS if secs > BACKOFF_MAX_SECS
 
-      def media_category(media_type)
-        MEDIA_CATEGORIES.fetch(media_type, DEFAULT_MEDIA_CATEGORY)
+        secs
       end
 
       def json_request(path, body)
@@ -129,13 +121,13 @@ module SimpleTweet
       # https://docs.x.com/x-api/media/upload-media
       ## maybe todo: multiple image
       def upload_media(media_type:, media:)
-        media_type = normalize_media_type(media_type)
-        return upload_video(video: media, media_type: media_type) if media_type == VIDEO_MEDIA_TYPE
+        media_type = MediaType.normalize(media_type)
+        return upload_video(video: media, media_type: media_type) if MediaType.video?(media_type)
 
         req = ::Net::HTTP::Post::Multipart.new(
           TW_MEDIA_UPLOAD_PATH,
           media: ::UploadIO.new(media, media_type),
-          media_category: media_category(media_type)
+          media_category: MediaType.category(media_type)
         )
         res = request_with_retry(req: req, error_kind_message: "upload media failed")
         data = ResponseParser.data_of(res, "upload media failed")
@@ -146,13 +138,13 @@ module SimpleTweet
       end
 
       # https://docs.x.com/x-api/media/media-upload-initialize
-      def init(video:, media_type: VIDEO_MEDIA_TYPE)
+      def init(video:, media_type: MediaType::VIDEO)
         init_req = json_request(
           TW_MEDIA_INITIALIZE_PATH,
           {
             media_type: media_type,
             total_bytes: video.size,
-            media_category: media_category(media_type)
+            media_category: MediaType.category(media_type)
           }
         )
         init_res = request_with_retry(req: init_req, error_kind_message: "init failed")
@@ -191,7 +183,7 @@ module SimpleTweet
       end
 
       # https://docs.x.com/x-api/media/quickstart/media-upload-chunked
-      def upload_video(video:, media_type: VIDEO_MEDIA_TYPE)
+      def upload_video(video:, media_type: MediaType::VIDEO)
         media_id = init(video: video, media_type: media_type)
 
         chunks_needed = (video.size - 1) / APPEND_PER + 1

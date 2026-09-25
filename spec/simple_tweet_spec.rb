@@ -260,6 +260,34 @@ RSpec.describe SimpleTweet do
       end
     end
 
+    context "with max_retry" do
+      let(:twitter_client) do
+        SimpleTweet::V2::Client.new(
+          consumer_key: "twitter_consumer_key",
+          consumer_secret: "twitter_consumer_secret",
+          access_token: "twitter_access_token",
+          access_token_secret: "twitter_access_secret",
+          max_retry: 1
+        )
+      end
+
+      before do
+        allow(twitter_client).to receive(:sleep)
+        stub_request(:post, media_upload_url).to_return(body: "", status: 503)
+      end
+
+      it "retries as many times as given" do
+        expect do
+          twitter_client.tweet_with_media(
+            message: message,
+            media_type: "image/png",
+            media: StringIO.new("dummy image")
+          )
+        end.to raise_error(SimpleTweet::UploadMediaError)
+        expect(a_request(:post, media_upload_url)).to have_been_made.twice
+      end
+    end
+
     context "when the upload returns 2xx with errors and no data" do
       before do
         allow(twitter_client).to receive(:sleep)
